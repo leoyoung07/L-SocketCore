@@ -49,7 +49,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SocketClient.cs" />
-    <Compile Include="TcpSocket.cs" />
+    <Compile Include="SocketManager.cs" />
     <Compile Include="Util.cs" />
   </ItemGroup>
   <ItemGroup>

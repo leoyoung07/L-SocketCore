@@ -9,7 +9,7 @@ namespace L_SocketCore
         public SocketClient(TcpClient client, ClientState state = ClientState.CONNECTED)
         {
             ID = Guid.NewGuid();
-            Client = client;
+            RemoteClient = client;
             State = state;
         }
 
@@ -25,7 +25,7 @@ namespace L_SocketCore
             get;
         }
 
-        public TcpClient Client
+        public TcpClient RemoteClient
         {
             get;
         }
@@ -45,11 +45,11 @@ namespace L_SocketCore
 
         public override string ToString()
         {
-            if (Client == null)
+            if (RemoteClient == null)
             {
                 return "";
             }
-            return (Client.Client.RemoteEndPoint as IPEndPoint).ToString();
+            return (RemoteClient.Client.RemoteEndPoint as IPEndPoint).ToString();
         }
     }
 }
