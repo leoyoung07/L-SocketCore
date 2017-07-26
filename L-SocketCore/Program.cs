@@ -26,6 +26,7 @@ namespace L_SocketCore
             socketManager.OnConnectClientAdd += SocketManager_OnConnectClientAdd;
             socketManager.OnConnectClientRemove += SocketManager_OnConnectClientRemove;
             socketManager.OnClientStateChange += SocketManager_OnClientStateChange;
+            socketManager.OnHeartbeatReceive += SocketManager_OnHeartbeatReceive;
             switch (choice)
             {
                 case 1: TcpListenerProcess(); break;
@@ -33,6 +34,11 @@ namespace L_SocketCore
                 default:
                     break;
             }
+        }
+
+        private static void SocketManager_OnHeartbeatReceive(SocketClient client, byte[] bytes)
+        {
+            Console.WriteLine("[Heartbeat]{0}: {1}", client, Encoding.UTF8.GetString(bytes));
         }
 
         private static void SocketManager_OnClientStateChange(Guid id, SocketClient.ClientState state)

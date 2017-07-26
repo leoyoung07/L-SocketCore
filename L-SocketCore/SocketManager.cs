@@ -10,8 +10,16 @@ namespace L_SocketCore
 {
     public class SocketManager
     {
+        //TODO message data structure
+
         public delegate void ReceiveData(SocketClient client, byte[] bytes);
         public event ReceiveData OnReceiveData;
+
+        public delegate void HeartbeatSend(SocketClient client, byte[] bytes);
+        public event HeartbeatSend OnHeartbeatSend;
+
+        public delegate void HeartbeatReceive(SocketClient client, byte[] bytes);
+        public event HeartbeatReceive OnHeartbeatReceive;
 
         public delegate void AcceptClientAdd(Guid id);
         public event AcceptClientAdd OnAcceptClientAdd;
@@ -47,6 +55,11 @@ namespace L_SocketCore
         }
 
         private const int INT_SIZE = 4;
+
+        public SocketManager()
+        {
+            heartbeat();
+        }
 
         public SocketClient Connect(string hostName, int port)
         {
@@ -160,6 +173,19 @@ namespace L_SocketCore
                     dataSize = IPAddress.NetworkToHostOrder(dataSize);
                     buffer = new byte[dataSize];
                     stream.Read(buffer, 0, dataSize);
+                    //heartbeat handler
+                    string msg = Encoding.UTF8.GetString(buffer);
+                    if (msg == "ping")
+                    {
+                        OnHeartbeatReceive?.Invoke(socketClient, buffer);
+                        Send(socketClient, Encoding.UTF8.GetBytes("pong"));
+                        continue;
+                    }
+                    if (msg == "pong")
+                    {
+                        OnHeartbeatReceive?.Invoke(socketClient, buffer);
+                        continue;
+                    }
                     OnReceiveData?.Invoke(socketClient, buffer);
                 }
                 catch (Exception ex)
@@ -187,7 +213,32 @@ namespace L_SocketCore
 
         private void heartbeat()
         {
-            //TODO heartbeat ConnectedClients
+            //heartbeat ConnectedClients
+            int interval = 5 * 1000;
+            Thread thread = new Thread(() =>
+            {
+                while (true)
+                {
+                    foreach (var item in ConnectedClients)
+                    {
+                        try
+                        {
+                            var client = item.Value;
+                            byte[] data = Encoding.UTF8.GetBytes("ping");
+                            Send(client, data);
+                            OnHeartbeatSend?.Invoke(client, data);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.Write(ex.Message);
+                            Util.WriteLog(ex.Message, "error.txt");
+                        }
+
+                    }
+                    Thread.Sleep(interval);
+                }
+            });
+            thread.Start();
         }
     }
 }
