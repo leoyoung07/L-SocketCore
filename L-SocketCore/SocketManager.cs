@@ -8,17 +8,16 @@ using System.Threading;
 
 namespace L_SocketCore
 {
+    //TODO server side heartbeat detection
     public class SocketManager
     {
-        //TODO message data structure
-
-        public delegate void ReceiveData(SocketClient client, byte[] bytes);
+        public delegate void ReceiveData(SocketClient client, MSG_TYPE type, byte[] bytes);
         public event ReceiveData OnReceiveData;
 
-        public delegate void HeartbeatSend(SocketClient client, byte[] bytes);
+        public delegate void HeartbeatSend(SocketClient client, MSG_TYPE type);
         public event HeartbeatSend OnHeartbeatSend;
 
-        public delegate void HeartbeatReceive(SocketClient client, byte[] bytes);
+        public delegate void HeartbeatReceive(SocketClient client, MSG_TYPE type);
         public event HeartbeatReceive OnHeartbeatReceive;
 
         public delegate void AcceptClientAdd(Guid id);
@@ -56,6 +55,15 @@ namespace L_SocketCore
 
         private const int INT_SIZE = 4;
 
+        public enum MSG_TYPE
+        {
+            PING,
+            PONG,
+            TEXT,
+            BIN,
+            CMD
+        }
+
         public SocketManager()
         {
             heartbeat();
@@ -86,36 +94,44 @@ namespace L_SocketCore
             }
         }
 
-        public void Send(SocketClient socketToSend, byte[] data)
+        public void Send(SocketClient socketToSend, MSG_TYPE type, byte[] data)
         {
-            if (data == null || data.Length == 0)
-            {
-                return;
-            }
             if (socketToSend.State == SocketClient.ClientState.DISCONNECTED)
             {
                 return;
             }
             Thread thread = new Thread(() => 
             {
-                Int32 dataSize = (Int32)data.Length;
                 NetworkStream stream = socketToSend.RemoteClient.GetStream();
-                byte[] buffer = Util.ConvertInt32ToBytes(dataSize);
+                //write type
+                byte[] buffer = Util.ConvertInt32ToBytes((Int32)type);
                 stream.Write(buffer, 0, INT_SIZE);
-                buffer = data;
-                stream.Write(buffer, 0, dataSize);
+                //write length
+                Int32 dataSize = 0;
+                if (data != null)
+                {
+                    dataSize = (Int32)data.Length;
+                }
+                buffer = Util.ConvertInt32ToBytes(dataSize);
+                stream.Write(buffer, 0, INT_SIZE);
+                //write data
+                if (data != null)
+                {
+                    buffer = data;
+                    stream.Write(buffer, 0, dataSize);
+                }
                 stream.Flush();
             });
             thread.Start();
         }
 
-        public void SendStr(SocketClient socketToSend, string msg)
+        public void SendText(SocketClient socketToSend, string msg)
         {
             if (msg == null || msg == "")
             {
                 return;
             }
-            Send(socketToSend, Encoding.UTF8.GetBytes(msg));
+            Send(socketToSend, MSG_TYPE.TEXT, Encoding.UTF8.GetBytes(msg));
         }
 
         public void Listen(int port, string localAddr = "0.0.0.0")
@@ -167,26 +183,27 @@ namespace L_SocketCore
                 try
                 {
                     byte[] buffer = new byte[INT_SIZE];
+                    //read type
                     stream.Read(buffer, 0, INT_SIZE);
                     socketClient.State = SocketClient.ClientState.DATA_SENDING;
+                    Int32 typeInt = BitConverter.ToInt32(buffer, 0);
+                    MSG_TYPE type = (MSG_TYPE)IPAddress.NetworkToHostOrder(typeInt);
+                    //read length
+                    stream.Read(buffer, 0, INT_SIZE);
                     Int32 dataSize = BitConverter.ToInt32(buffer, 0);
                     dataSize = IPAddress.NetworkToHostOrder(dataSize);
-                    buffer = new byte[dataSize];
-                    stream.Read(buffer, 0, dataSize);
-                    //heartbeat handler
-                    string msg = Encoding.UTF8.GetString(buffer);
-                    if (msg == "ping")
+                    //read data
+                    if (dataSize > 0)
                     {
-                        OnHeartbeatReceive?.Invoke(socketClient, buffer);
-                        Send(socketClient, Encoding.UTF8.GetBytes("pong"));
-                        continue;
+                        buffer = new byte[dataSize];
+                        stream.Read(buffer, 0, dataSize);
                     }
-                    if (msg == "pong")
+                    else
                     {
-                        OnHeartbeatReceive?.Invoke(socketClient, buffer);
-                        continue;
+                        buffer = null;
                     }
-                    OnReceiveData?.Invoke(socketClient, buffer);
+                    dataHandler(socketClient, type, buffer);
+                    socketClient.State = SocketClient.ClientState.CONNECTED;
                 }
                 catch (Exception ex)
                 {
@@ -211,6 +228,31 @@ namespace L_SocketCore
             }
         }
 
+        private void dataHandler(SocketClient socketClient, MSG_TYPE type, byte[] buffer)
+        {
+            switch (type)
+            {
+                case MSG_TYPE.PING:
+                    OnHeartbeatReceive?.Invoke(socketClient, type);
+                    Send(socketClient, MSG_TYPE.PONG, null);
+                    OnHeartbeatSend?.Invoke(socketClient, MSG_TYPE.PONG);
+                    break;
+                case MSG_TYPE.PONG:
+                    OnHeartbeatReceive?.Invoke(socketClient, type);
+                    break;
+                case MSG_TYPE.TEXT:
+                    OnReceiveData?.Invoke(socketClient, type, buffer);
+                    break;
+                case MSG_TYPE.BIN:
+                    break;
+                case MSG_TYPE.CMD:
+                    break;
+                default:
+                    OnReceiveData?.Invoke(socketClient, type, buffer);
+                    break;
+            }
+        }
+
         private void heartbeat()
         {
             //heartbeat ConnectedClients
@@ -224,9 +266,8 @@ namespace L_SocketCore
                         try
                         {
                             var client = item.Value;
-                            byte[] data = Encoding.UTF8.GetBytes("ping");
-                            Send(client, data);
-                            OnHeartbeatSend?.Invoke(client, data);
+                            Send(client, MSG_TYPE.PING, null);
+                            OnHeartbeatSend?.Invoke(client, MSG_TYPE.PING);
                         }
                         catch (Exception ex)
                         {

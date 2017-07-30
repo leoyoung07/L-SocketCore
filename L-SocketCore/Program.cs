@@ -36,9 +36,9 @@ namespace L_SocketCore
             }
         }
 
-        private static void SocketManager_OnHeartbeatReceive(SocketClient client, byte[] bytes)
+        private static void SocketManager_OnHeartbeatReceive(SocketClient client, SocketManager.MSG_TYPE type)
         {
-            Console.WriteLine("[Heartbeat]{0}: {1}", client, Encoding.UTF8.GetString(bytes));
+            Console.WriteLine("[Heartbeat]{0}: {1}", client, type);
         }
 
         private static void SocketManager_OnClientStateChange(Guid id, SocketClient.ClientState state)
@@ -84,7 +84,7 @@ namespace L_SocketCore
             SocketClient socketClient = socketManager.Connect(hostName, port);
             while (true)
             {
-                socketManager.SendStr(socketClient, "hello");
+                socketManager.SendText(socketClient, "hello");
                 Thread.Sleep(1000);
             }
         }
@@ -94,13 +94,16 @@ namespace L_SocketCore
             socketManager.Listen(port);
         }
 
-        private static void SocketManager_onReceiveData(SocketClient client, byte[] data)
+        private static void SocketManager_onReceiveData(SocketClient client, SocketManager.MSG_TYPE type, byte[] data)
         {
             Console.WriteLine(client.ToString());
-            Console.WriteLine(Encoding.UTF8.GetString(data));
+            if (type == SocketManager.MSG_TYPE.TEXT || type == SocketManager.MSG_TYPE.CMD)
+            {
+                Console.WriteLine("[{0}]{1}", type, Encoding.UTF8.GetString(data));
+            }
             if (socketManager.AcceptedClients.ContainsKey(client.ID))
             {
-                socketManager.SendStr(client, "world");
+                socketManager.SendText(client, "world");
             }
         }
 
