@@ -17,7 +17,11 @@ namespace L_SocketCore
         {
             CONNECTED,
             DISCONNECTED,
-            DATA_SENDING
+            DATA_SEND_BEGIN,
+            DATA_SEND_END,
+            HEARTBEAT_SEND,
+            HEARTBEAT_RECEIVE,
+            HEARTBEAT_PENDING
         }
 
         public Guid ID
@@ -30,6 +34,9 @@ namespace L_SocketCore
             get;
         }
 
+        public delegate void StateChange(Guid id, ClientState state);
+        public event StateChange OnStateChange;
+
         private ClientState _state;
         public ClientState State
         {
@@ -40,6 +47,7 @@ namespace L_SocketCore
             set
             {
                 _state = value;
+                OnStateChange?.Invoke(ID, _state);
             }
         }
 

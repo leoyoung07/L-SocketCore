@@ -54,7 +54,7 @@ namespace L_SocketCore
             }
             if (socketClient != null)
             {
-                Console.WriteLine("{0} is {1}", socketClient.ToString(), socketClient.State);
+                Console.WriteLine("[{0}]{1} state {2}", DateTime.Now.ToString("yyyyMMdd HH:mm:ss"), socketClient.ToString(), socketClient.State);
             }
             
         }
@@ -84,7 +84,7 @@ namespace L_SocketCore
             SocketClient socketClient = socketManager.Connect(hostName, port);
             while (true)
             {
-                socketManager.SendText(socketClient, "hello");
+                //socketManager.SendText(socketClient, "hello");
                 Thread.Sleep(1000);
             }
         }
