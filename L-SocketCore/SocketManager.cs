@@ -17,18 +17,6 @@ namespace L_SocketCore
         /// </summary>
         public event ReceiveData OnReceiveData;
 
-        public delegate void HeartbeatSend(SocketClient client, MSG_TYPE type);
-        /// <summary>
-        /// Event on heartbeat send
-        /// </summary>
-        public event HeartbeatSend OnHeartbeatSend;
-
-        public delegate void HeartbeatReceive(SocketClient client, MSG_TYPE type);
-        /// <summary>
-        /// Event on heartbeat receive
-        /// </summary>
-        public event HeartbeatReceive OnHeartbeatReceive;
-
         public delegate void AcceptClientAdd(Guid id);
 
         public event AcceptClientAdd OnAcceptClientAdd;
@@ -42,8 +30,11 @@ namespace L_SocketCore
         public delegate void ConnectClientRemove(Guid id);
         public event ConnectClientRemove OnConnectClientRemove;
 
-        public delegate void ClientStateChange(Guid id, SocketClient.ClientState state);
+        public delegate void ClientStateChange(Guid id, SocketClient.CLIENT_STATE state);
         public event ClientStateChange OnClientStateChange;
+
+        public delegate void HeartbeatStateChange(Guid id, SocketClient.HEARTBEAT_STATE state);
+        public event HeartbeatStateChange OnHeartbeatStateChange;
 
         private Dictionary<Guid, SocketClient> _acceptedClients = new Dictionary<Guid, SocketClient>();
         /// <summary>
@@ -96,6 +87,8 @@ namespace L_SocketCore
                 ConnectedClients.Add(socketClient.ID, socketClient);
                 OnConnectClientAdd?.Invoke(socketClient.ID);
                 socketClient.OnStateChange += SocketClient_OnStateChange;
+                socketClient.OnHeartbeatStateChange += SocketClient_OnHeartbeatStateChange;
+                socketClient.HeartbeatState = SocketClient.HEARTBEAT_STATE.INIT;
                 Thread thread = new Thread(() =>
                 {
                     receiveData(socketClient);
@@ -112,14 +105,14 @@ namespace L_SocketCore
             }
         }
 
-        private void SocketClient_OnStateChange(Guid id, SocketClient.ClientState state)
+        private void SocketClient_OnStateChange(Guid id, SocketClient.CLIENT_STATE state)
         {
             OnClientStateChange?.Invoke(id, state);
         }
 
         public void Send(SocketClient socketToSend, MSG_TYPE type, byte[] data)
         {
-            if (socketToSend.State == SocketClient.ClientState.DISCONNECTED)
+            if (socketToSend.State == SocketClient.CLIENT_STATE.DISCONNECTED)
             {
                 return;
             }
@@ -173,6 +166,8 @@ namespace L_SocketCore
                         AcceptedClients.Add(socketClient.ID, socketClient);
                         OnAcceptClientAdd?.Invoke(socketClient.ID);
                         socketClient.OnStateChange += SocketClient_OnStateChange;
+                        socketClient.OnHeartbeatStateChange += SocketClient_OnHeartbeatStateChange;
+                        socketClient.HeartbeatState = SocketClient.HEARTBEAT_STATE.INIT;
                         Debug.WriteLine(socketClient.ToString() + ' ' + socketClient.State);
                         receiveData(socketClient);
 
@@ -192,6 +187,11 @@ namespace L_SocketCore
                 listener.Stop();
             }
 
+        }
+
+        private void SocketClient_OnHeartbeatStateChange(Guid id, SocketClient.HEARTBEAT_STATE state)
+        {
+            OnHeartbeatStateChange?.Invoke(id, state);
         }
 
         public void Disconnect(SocketClient socketToDisconnect)
@@ -231,9 +231,9 @@ namespace L_SocketCore
                 }
                 catch (Exception ex)
                 {
-                    if (socketClient.State != SocketClient.ClientState.DISCONNECTED)
+                    if (socketClient.State != SocketClient.CLIENT_STATE.DISCONNECTED)
                     {
-                        socketClient.State = SocketClient.ClientState.DISCONNECTED;
+                        socketClient.State = SocketClient.CLIENT_STATE.DISCONNECTED;
                         socketClient.RemoteClient.Close();
                         if (AcceptedClients.ContainsKey(socketClient.ID))
                         {
@@ -256,14 +256,12 @@ namespace L_SocketCore
             switch (type)
             {
                 case MSG_TYPE.PING:
-                    socketClient.State = SocketClient.ClientState.HEARTBEAT_RECEIVE;
-                    OnHeartbeatReceive?.Invoke(socketClient, type);
+                    socketClient.HeartbeatState = SocketClient.HEARTBEAT_STATE.PING_RECEIVE;
                     Send(socketClient, MSG_TYPE.PONG, null);
-                    OnHeartbeatSend?.Invoke(socketClient, MSG_TYPE.PONG);
+                    socketClient.HeartbeatState = SocketClient.HEARTBEAT_STATE.PONG_SEND;
                     break;
                 case MSG_TYPE.PONG:
-                    socketClient.State = SocketClient.ClientState.HEARTBEAT_RECEIVE;
-                    OnHeartbeatReceive?.Invoke(socketClient, type);
+                    socketClient.HeartbeatState = SocketClient.HEARTBEAT_STATE.PONG_RECEIVE;
                     break;
                 case MSG_TYPE.TEXT:
                     OnReceiveData?.Invoke(socketClient, type, buffer);
@@ -292,8 +290,7 @@ namespace L_SocketCore
                         {
                             var client = item.Value;
                             Send(client, MSG_TYPE.PING, null);
-                            client.State = SocketClient.ClientState.HEARTBEAT_SEND;
-                            OnHeartbeatSend?.Invoke(client, MSG_TYPE.PING);
+                            client.HeartbeatState = SocketClient.HEARTBEAT_STATE.PING_SEND;
                         }
                         catch (Exception ex)
                         {
@@ -317,13 +314,13 @@ namespace L_SocketCore
                 {
                     foreach (var item in ConnectedClients.Values)
                     {
-                        if (item.State == SocketClient.ClientState.HEARTBEAT_PENDING)
+                        if (item.HeartbeatState == SocketClient.HEARTBEAT_STATE.PENDING)
                         {
-                            item.State = SocketClient.ClientState.DISCONNECTED;
+                            item.State = SocketClient.CLIENT_STATE.DISCONNECTED;
                         }
-                        if (item.State == SocketClient.ClientState.HEARTBEAT_SEND)
+                        if (item.HeartbeatState == SocketClient.HEARTBEAT_STATE.PING_SEND)
                         {
-                            item.State = SocketClient.ClientState.HEARTBEAT_PENDING;
+                            item.HeartbeatState = SocketClient.HEARTBEAT_STATE.PENDING;
                         }
                     }
                     Thread.Sleep(networkInterval);
@@ -337,13 +334,15 @@ namespace L_SocketCore
                 {
                     foreach (var item in AcceptedClients.Values)
                     {
-                        if (item.State == SocketClient.ClientState.HEARTBEAT_PENDING)
+                        if (item.HeartbeatState == SocketClient.HEARTBEAT_STATE.PENDING)
                         {
-                            item.State = SocketClient.ClientState.DISCONNECTED;
+                            item.State = SocketClient.CLIENT_STATE.DISCONNECTED;
                         }
-                        if (item.State == SocketClient.ClientState.HEARTBEAT_RECEIVE)
+                        if (item.HeartbeatState == SocketClient.HEARTBEAT_STATE.PING_RECEIVE ||
+                            item.HeartbeatState == SocketClient.HEARTBEAT_STATE.PONG_SEND ||
+                            item.HeartbeatState == SocketClient.HEARTBEAT_STATE.INIT)
                         {
-                            item.State = SocketClient.ClientState.HEARTBEAT_PENDING;
+                            item.HeartbeatState = SocketClient.HEARTBEAT_STATE.PENDING;
                         }
                     }
                     Thread.Sleep(detectInterval);

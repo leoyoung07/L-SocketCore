@@ -26,7 +26,7 @@ namespace L_SocketCore
             socketManager.OnConnectClientAdd += SocketManager_OnConnectClientAdd;
             socketManager.OnConnectClientRemove += SocketManager_OnConnectClientRemove;
             socketManager.OnClientStateChange += SocketManager_OnClientStateChange;
-            socketManager.OnHeartbeatReceive += SocketManager_OnHeartbeatReceive;
+            socketManager.OnHeartbeatStateChange += SocketManager_OnHeartbeatStateChange;
             switch (choice)
             {
                 case 1: TcpListenerProcess(); break;
@@ -36,12 +36,7 @@ namespace L_SocketCore
             }
         }
 
-        private static void SocketManager_OnHeartbeatReceive(SocketClient client, SocketManager.MSG_TYPE type)
-        {
-            Console.WriteLine("[Heartbeat]{0}: {1}", client, type);
-        }
-
-        private static void SocketManager_OnClientStateChange(Guid id, SocketClient.ClientState state)
+        private static void SocketManager_OnHeartbeatStateChange(Guid id, SocketClient.HEARTBEAT_STATE state)
         {
             SocketClient socketClient = null;
             if (socketManager.AcceptedClients.ContainsKey(id))
@@ -54,7 +49,24 @@ namespace L_SocketCore
             }
             if (socketClient != null)
             {
-                Console.WriteLine("[{0}]{1} state {2}", DateTime.Now.ToString("yyyyMMdd HH:mm:ss"), socketClient.ToString(), socketClient.State);
+                Console.WriteLine("[{0}]{1} heartbeat state {2}", DateTime.Now.ToString("yyyyMMdd HH:mm:ss"), socketClient.ToString(), state);
+            }
+        }
+
+        private static void SocketManager_OnClientStateChange(Guid id, SocketClient.CLIENT_STATE state)
+        {
+            SocketClient socketClient = null;
+            if (socketManager.AcceptedClients.ContainsKey(id))
+            {
+                socketClient = socketManager.AcceptedClients[id];
+            }
+            if (socketManager.ConnectedClients.ContainsKey(id))
+            {
+                socketClient = socketManager.ConnectedClients[id];
+            }
+            if (socketClient != null)
+            {
+                Console.WriteLine("[{0}]{1} state {2}", DateTime.Now.ToString("yyyyMMdd HH:mm:ss"), socketClient.ToString(), state);
             }
             
         }
